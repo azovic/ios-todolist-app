@@ -1,61 +1,114 @@
-//
-//  ContentView.swift
-//  todolist
-//
-//  Created by Azra Ceren Ertürk on 19.01.2026.
-//
-
 import SwiftUI
 import SwiftData
 
+enum TodoFilter: String, CaseIterable {
+    case all = "All"
+    case active = "Active"
+    case completed = "Completed"
+}
+
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+
+    @Environment(\.modelContext) private var context
+    @Query(sort: \Todo.createdAt, order: .reverse) private var todos: [Todo]
+
+    @State private var newTodo = ""
+    @State private var selectedFilter: TodoFilter = .all
+    
+    var filteredTodos: [Todo] {
+        switch selectedFilter {
+        case .all:
+            return todos
+        case .active:
+            return todos.filter { !$0.isCompleted }
+        case .completed:
+            return todos.filter { $0.isCompleted }
+        }
+    }
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
+        NavigationStack {
+            VStack(spacing: 16) {
+
+                // MARK: - Add Todo
+                HStack(spacing: 12) {
+                    TextField("Yeni görev", text: $newTodo)
+                        .padding(12)
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(10)
+                    Picker("Filter", selection: $selectedFilter) {
+                        ForEach(TodoFilter.allCases, id: \.self) { filter in
+                            Text(filter.rawValue)
+                                .tag(filter)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+
+
+                    Button {
+                        addTodo()
                     } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(.blue)
                     }
                 }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+                .padding(.horizontal)
+
+                // MARK: - Todo List
+                List {
+                    ForEach(filteredTodos) { todo in
+                        HStack(spacing: 12) {
+
+                            Image(systemName: todo.isCompleted
+                                  ? "checkmark.circle.fill"
+                                  : "circle")
+                                .foregroundColor(todo.isCompleted ? .green : .gray)
+                                .onTapGesture {
+                                    toggleTodo(todo)
+                                }
+
+                            Text(todo.title)
+                                .strikethrough(todo.isCompleted)
+                                .foregroundColor(todo.isCompleted ? .gray : .primary)
+
+                            Spacer()
+                        }
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(.secondarySystemBackground))
+                        )
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                     }
+                    .onDelete(perform: deleteTodo)
                 }
+                .listStyle(.plain)
             }
-        } detail: {
-            Text("Select an item")
+            .navigationTitle("Todo List")
         }
     }
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
+    // MARK: - Functions
+
+    private func addTodo() {
+        guard !newTodo.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+
+        let todo = Todo(title: newTodo)
+        context.insert(todo)
+        newTodo = ""
     }
 
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
+    private func toggleTodo(_ todo: Todo) {
+        todo.isCompleted.toggle()
+    }
+
+    private func deleteTodo(at offsets: IndexSet) {
+        for index in offsets {
+            context.delete(todos[index])
         }
     }
 }
 
-#Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
-}
